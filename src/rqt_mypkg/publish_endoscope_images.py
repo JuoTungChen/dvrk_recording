@@ -9,8 +9,17 @@ import rospy
 psm1_idx = 0
 psm2_idx = 2
 
+desired_width = 640
+desired_height = 480
+
 cap1 = cv.VideoCapture(psm1_idx)
 cap2 = cv.VideoCapture(psm2_idx)
+
+cap1.set(cv.CAP_PROP_FRAME_WIDTH, desired_width)
+cap1.set(cv.CAP_PROP_FRAME_HEIGHT, desired_height)
+
+cap2.set(cv.CAP_PROP_FRAME_WIDTH, desired_width)
+cap2.set(cv.CAP_PROP_FRAME_HEIGHT, desired_height)
 
 # subscriber
 pub1 = rospy.Publisher("/PSM1/endoscope_img", 
@@ -26,24 +35,43 @@ if not cap1.isOpened() or not cap2.isOpened():
  exit()
 
 rospy.init_node('endoscope_talker', anonymous=True)
-rate = rospy.Rate(30) # 10hz
+rate = rospy.Rate(30) # 30hz
 
+print_camera_dim_flag = True
 while not rospy.is_shutdown():
- # Capture frame-by-frame
- ret1, frame1 = cap1.read()
- ret2, frame2 = cap2.read()
+   
+   # Capture frame-by-frame
+   ret1, frame1 = cap1.read()
+   ret2, frame2 = cap2.read()
 
- pub1.publish(bridge.cv2_to_imgmsg(frame1, encoding="passthrough"))
- pub2.publish(bridge.cv2_to_imgmsg(frame2, encoding="passthrough"))
- 
- # Display the resulting frame
- cv.imshow('frame', frame1)
- cv.imshow('frame2', frame2)
+   # Check if frames are captured correctly
+   if not ret1 or frame1 is None:
+      print("Failed to capture frame from camera 1")
+      continue
 
- if cv.waitKey(1) == ord('q'):
-    break
- 
- rate.sleep()
+   if not ret2 or frame2 is None:
+      print("Failed to capture frame from camera 2")
+      continue
+
+   if print_camera_dim_flag:
+      print_camera_dim_flag = False
+      
+      print("cap1 shape: ", frame1.shape)
+      print("cap2 shape: ", frame2.shape)
+
+   pub1.publish(bridge.cv2_to_imgmsg(frame1, encoding="passthrough"))
+   pub2.publish(bridge.cv2_to_imgmsg(frame2, encoding="passthrough"))
+
+   # Display the resulting frame
+   cv.imshow('right_wrist', frame1)
+   cv.imshow('left_wrist', frame2)
+
+   # Increase waitKey delay to improve key press detection
+   if cv.waitKey(10) & 0xFF == ord('q'):
+      rospy.signal_shutdown('User requested shutdown')
+      break
+
+   rate.sleep()
 
 # When everything done, release the capture
 cap1.release()
