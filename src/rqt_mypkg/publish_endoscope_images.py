@@ -6,8 +6,8 @@ from sensor_msgs.msg import Image, CompressedImage, JointState
 from cv_bridge import CvBridge
 import rospy
 
-psm1_idx = 0
-psm2_idx = 2
+psm1_idx = 2
+psm2_idx = 0
 
 desired_width = 640
 desired_height = 480
@@ -35,8 +35,11 @@ if not cap1.isOpened() or not cap2.isOpened():
  exit()
 
 rospy.init_node('endoscope_talker', anonymous=True)
-rate = rospy.Rate(30) # 30hz
+fps = 30
+rate = rospy.Rate(fps) # 30hz
 
+image_count = 0
+wrist_camera_fps = 1
 print_camera_dim_flag = True
 while not rospy.is_shutdown():
    
@@ -63,13 +66,16 @@ while not rospy.is_shutdown():
    pub2.publish(bridge.cv2_to_imgmsg(frame2, encoding="passthrough"))
 
    # Display the resulting frame
-   cv.imshow('right_wrist', frame1)
-   cv.imshow('left_wrist', frame2)
+   # if image_count % fps // wrist_camera_fps == 0:
+   #    cv.imshow('right_wrist', frame1)
+   #    cv.imshow('left_wrist', frame2)
 
    # Increase waitKey delay to improve key press detection
    if cv.waitKey(10) & 0xFF == ord('q'):
       rospy.signal_shutdown('User requested shutdown')
       break
+
+   # image_count += 1
 
    rate.sleep()
 
