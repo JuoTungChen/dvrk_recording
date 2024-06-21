@@ -16,3 +16,7 @@ image_viewer_with_boundaries.py
 rename_episode_folders.py
 visualize_endoscope.py
 __pycache__/my_module.cpython-38.pyc
+recordings/
+recordings_backup/
+record_w_endoscope_Si/
+_recordings_long_term/
