@@ -1,3 +1,4 @@
 <launch>
     <node pkg="rqt_mypkg" name = "record" type="record_from_rostopics_w_endoscope_Si.py" output="screen" cwd = "node"/>
+    <!-- <node pkg="rqt_mypkg" name = "record" type="record_from_rostopics_w_endoscope_Si/recording_gui.py" output="screen" cwd = "node"/> -->
 </launch>

@@ -6,6 +6,7 @@ from datetime import datetime
 import time
 import signal
 import sys
+import csv
 
 # for ros stuff
 import rospy
@@ -31,7 +32,8 @@ def signal_handler(sig, frame):
 # Set up signal handler for graceful shutdown
 signal.signal(signal.SIGINT, signal_handler)
 
-image_sav_res = (960, 540) # (640, 480)
+wrist_image_sav_res = (640, 480)
+endo_image_save_res = (960, 540)
 print_execution_time_every_n_seconds = 5
 
 # Initialize isRecord - otherwise it throws an error in main loop if "dynamic_reconfigure_callback" not called yet
@@ -125,7 +127,18 @@ class ros_topics:
     self.sub14 = rospy.Subscriber("/PSM3/setpoint_js", JointState, self.c14)
     self.sub15 = rospy.Subscriber("/ECM/measured_js", JointState, self.c15)
     self.sub16 = rospy.Subscriber("/ECM/setpoint_js", JointState, self.c16)
-
+        
+    # Define the codec and create VideoWriter object
+    time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    fourcc = cv2.VideoWriter_fourcc(*'X264')
+    self.vid_left = cv2.VideoWriter('_recordings_long_term/endoscope_left_' + time_stamp + '.mp4', fourcc, 30, endo_image_save_res)
+    self.vid_right = cv2.VideoWriter('_recordings_long_term/endoscope_right_' + time_stamp + '.mp4', fourcc, 30, endo_image_save_res)
+    self.vid_psm1_endo = cv2.VideoWriter('_recordings_long_term/wrist_right_' + time_stamp + '.mp4', fourcc, 30, wrist_image_sav_res)
+    self.vid_psm2_endo = cv2.VideoWriter('_recordings_long_term/wrist_left_' + time_stamp + '.mp4', fourcc, 30, wrist_image_sav_res)
+    
+    self.csv_file = None
+    self.csv_writer = None
+    
   def c1(self, data):
     global suj1_pose
     suj1_pose = data.pose
@@ -275,9 +288,87 @@ def image_saver(queue):
     if item is None:
       break  # None is our signal to stop
     filename, image = item
-    # print(image)
     cv2.imwrite(filename, image)
     queue.task_done()
+    
+def write_to_csv(data_row):
+  global rt
+  if rt.csv_writer is not None:
+    rt.csv_writer.writerow(data_row)
+    
+def initialize_csv_file():
+  global rt
+  time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+  csv_path = f"_recordings_long_term/ee_csv_{time_stamp}.csv"
+  rt.csv_file = open(csv_path, mode='w', newline='')
+  rt.csv_writer = csv.writer(rt.csv_file)
+  header = [
+          "timestamp",
+          
+          "psm1_pose.position.x", "psm1_pose.position.y", "psm1_pose.position.z", # PSM1
+          "psm1_pose.orientation.x", "psm1_pose.orientation.y", "psm1_pose.orientation.z", "psm1_pose.orientation.w",
+          
+          "psm1_sp.position.x", "psm1_sp.position.y", "psm1_sp.position.z",
+          "psm1_sp.orientation.x", "psm1_sp.orientation.y", "psm1_sp.orientation.z", "psm1_sp.orientation.w",
+          
+          "psm1_jaw", "psm1_jaw_sp",
+
+          "psm1_rcm_pose.position.x", "psm1_rcm_pose.position.y", "psm1_rcm_pose.position.z", 
+          "psm1_rcm_pose.orientation.x", "psm1_rcm_pose.orientation.y", "psm1_rcm_pose.orientation.z", "psm1_rcm_pose.orientation.w",
+          
+          "psm2_pose.position.x", "psm2_pose.position.y", "psm2_pose.position.z", # PSM 2
+          "psm2_pose.orientation.x", "psm2_pose.orientation.y", "psm2_pose.orientation.z", "psm2_pose.orientation.w",
+          
+          "psm2_sp.position.x", "psm2_sp.position.y", "psm2_sp.position.z",
+          "psm2_sp.orientation.x", "psm2_sp.orientation.y", "psm2_sp.orientation.z", "psm2_sp.orientation.w",
+
+          "psm2_jaw", "psm2_jaw_sp",
+
+          "psm2_rcm_pose.position.x", "psm2_rcm_pose.position.y", "psm2_rcm_pose.position.z",
+          "psm2_rcm_pose.orientation.x", "psm2_rcm_pose.orientation.y", "psm2_rcm_pose.orientation.z", "psm2_rcm_pose.orientation.w",
+
+          "ecm_pose.position.x", "ecm_pose.position.y", "ecm_pose.position.z", # ECM
+          "ecm_pose.orientation.x", "ecm_pose.orientation.y", "ecm_pose.orientation.z", "ecm_pose.orientation.w",
+
+          "ecm_rcm_pose.position.x", "ecm_rcm_pose.position.y", "ecm_rcm_pose.position.z",
+          "ecm_rcm_pose.orientation.x", "ecm_rcm_pose.orientation.y", "ecm_rcm_pose.orientation.z", "ecm_rcm_pose.orientation.w",
+
+          "suj1_pose.position.x", "suj1_pose.position.y", "suj1_pose.position.z",
+          "suj1_pose.orientation.x", "suj1_pose.orientation.y", "suj1_pose.orientation.z", "suj1_pose.orientation.w",
+          "suj1_jp[0]", "suj1_jp[1]", "suj1_jp[2]", "suj1_jp[3]",
+
+          "suj2_pose.position.x", "suj2_pose.position.y", "suj2_pose.position.z",
+          "suj2_pose.orientation.x", "suj2_pose.orientation.y", "suj2_pose.orientation.z", "suj2_pose.orientation.w",
+          "suj2_jp[0]", "suj2_jp[1]", "suj2_jp[2]", "suj2_jp[3]",
+
+          "suj3_pose.position.x", "suj3_pose.position.y", "suj3_pose.position.z",
+          "suj3_pose.orientation.x", "suj3_pose.orientation.y", "suj3_pose.orientation.z", "suj3_pose.orientation.w",
+          "suj3_jp[0]", "suj3_jp[1]", "suj3_jp[2]", "suj3_jp[3]",
+
+          "suj_ecm_pose.position.x", "suj_ecm_pose.position.y", "suj_ecm_pose.position.z",
+          "suj_ecm_pose.orientation.x", "suj_ecm_pose.orientation.y", "suj_ecm_pose.orientation.z", "suj_ecm_pose.orientation.w",
+          "suj_ecm_jp[0]", "suj_ecm_jp[1]", "suj_ecm_jp[2]", "suj_ecm_jp[3]",
+
+          "psm1_js[0]", "psm1_js[1]", "psm1_js[2]", "psm1_js[3]", "psm1_js[4]", "psm1_js[5]",
+          "psm1_set_js[0]", "psm1_set_js[1]", "psm1_set_js[2]", "psm1_set_js[3]", "psm1_set_js[4]", "psm1_set_js[5]",
+
+          "psm2_js[0]", "psm2_js[1]", "psm2_js[2]", "psm2_js[3]", "psm2_js[4]", "psm2_js[5]",
+          "psm2_set_js[0]", "psm2_set_js[1]", "psm2_set_js[2]", "psm2_set_js[3]", "psm2_set_js[4]", "psm2_set_js[5]",
+
+          "psm3_js[0]", "psm3_js[1]", "psm3_js[2]", "psm3_js[3]", "psm3_js[4]", "psm3_js[5]",
+          "psm3_set_js[0]", "psm3_set_js[1]", "psm3_set_js[2]", "psm3_set_js[3]", "psm3_set_js[4]", "psm3_set_js[5]",
+
+          "ecm_js[0]", "ecm_js[1]", "ecm_js[2]", "ecm_js[3]",
+          "ecm_set_js[0]", "ecm_set_js[1]", "ecm_set_js[2]", "ecm_set_js[3]"
+        ]
+  rt.csv_writer.writerow(header)
+
+def close_csv_file():
+  global rt
+  if rt.csv_file:
+    rt.csv_file.close()
+    rt.csv_file = None
+    rt.csv_writer = None
 
 # Create a queue to communicate with the worker thread
 image_queue = queue.Queue()
@@ -306,9 +397,9 @@ execution_times_list = []
 while(True):
   # Display the average execution time every n seconds
   if len(execution_times_list) == ros_fps*print_execution_time_every_n_seconds:
-      # print(f"Average execution time (publish+show wrist camera frames): {np.mean(execution_times_list)*1000:.2f} ms")
+    #   print(f"Average execution time (publish+show wrist camera frames): {np.mean(execution_times_list)*1000:.2f} ms")
       execution_times_list = []
-      # print(f"Current queue sizes: {image_queue.qsize()}")
+    #   print(f"Current queue sizes: {image_queue.qsize()}")
   
       # Publish wrist camera images + visualize them with the DaVinci Endoscope camera
   with measure_execution_time(execution_times_list):
@@ -316,25 +407,12 @@ while(True):
       # create a new dir in the beginning
       
       if requiresNewDir:
-        time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
-        ep_dir = os.path.join("_recordings", time_stamp)
-        left_img_dir = os.path.join(ep_dir, "left_img_dir")
-        right_img_dir = os.path.join(ep_dir, "right_img_dir")
-        endo_p1_dir = os.path.join(ep_dir, "endo_psm1")
-        endo_p2_dir = os.path.join(ep_dir, "endo_psm2")
-
+        initialize_csv_file()
 
         # also reset indices and other stuff
         num_frames = 0
         ee_points = []
-
-        if not os.path.exists(ep_dir):
-          os.makedirs(ep_dir)
-          os.makedirs(left_img_dir)
-          os.makedirs(right_img_dir)
-          os.makedirs(endo_p1_dir)
-          os.makedirs(endo_p2_dir)
-
+        
         requiresNewDir = False
         # since we just made a new dir, we need to save csv later
         requiresSaveCsv = True
@@ -396,31 +474,16 @@ while(True):
       ecm_set_js[0], ecm_set_js[1], ecm_set_js[2], ecm_set_js[3]
       ])
       
-      # save frame
-      # save_name_left = os.path.join(left_img_dir, f"frame{num_frames:06d}_{usb_image_left_timestamp}_left.jpg")
-      # save_name_right = os.path.join(right_img_dir, f"frame{num_frames:06d}_{usb_image_right_timestamp}_right.jpg")
-      # save_name_endo_p1 = os.path.join(endo_p1_dir, f"frame{num_frames:06d}_{endo_cam_psm1_timestamp}_psm1.jpg")
-      # save_name_endo_p2 = os.path.join(endo_p2_dir, f"frame{num_frames:06d}_{endo_cam_psm2_timestamp}_psm2.jpg")
-      save_name_left = os.path.join(left_img_dir, f"frame{num_frames:06d}_left.jpg")
-      save_name_right = os.path.join(right_img_dir, f"frame{num_frames:06d}_right.jpg")
-      save_name_endo_p1 = os.path.join(endo_p1_dir, f"frame{num_frames:06d}_psm1.jpg")
-      save_name_endo_p2 = os.path.join(endo_p2_dir, f"frame{num_frames:06d}_psm2.jpg")
+      write_to_csv(ee_points)
 
-      if image_sav_res is None:
-        image_queue.put((save_name_left, cv2.cvtColor(usb_image_left, cv2.COLOR_BGR2RGB)))
-        image_queue.put((save_name_right, cv2.cvtColor(usb_image_right, cv2.COLOR_BGR2RGB)))
-        image_queue.put((save_name_endo_p1, endo_cam_psm1))
-        image_queue.put((save_name_endo_p2, endo_cam_psm2))
-      else:
-        image_queue.put((save_name_left, cv2.cvtColor(cv2.resize(usb_image_left, image_sav_res), cv2.COLOR_BGR2RGB)))
-        image_queue.put((save_name_right, cv2.cvtColor(cv2.resize(usb_image_right, image_sav_res), cv2.COLOR_BGR2RGB)))
-        image_queue.put((save_name_endo_p1, endo_cam_psm1))
-        image_queue.put((save_name_endo_p2, endo_cam_psm2))
-
+      rt.vid_left.write(cv2.cvtColor(cv2.resize(usb_image_left, endo_image_save_res), cv2.COLOR_BGR2RGB))
+      rt.vid_right.write(cv2.cvtColor(cv2.resize(usb_image_right, endo_image_save_res), cv2.COLOR_BGR2RGB))
+      rt.vid_psm1_endo.write(cv2.resize(endo_cam_psm1, wrist_image_sav_res))
+      rt.vid_psm2_endo.write(cv2.resize(endo_cam_psm2, wrist_image_sav_res))
       num_frames = num_frames + 1
 
       if num_frames % 100 == 0:
-        pass
+          pass
         # print(f"Queue size is {image_queue.qsize()}")
 
       if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -431,77 +494,17 @@ while(True):
       requiresNewDir = True
       cv2.destroyAllWindows()
       if requiresSaveCsv is True:
-        # save ee points
-        header =  [
-          "timestamp",
-          
-          "psm1_pose.position.x", "psm1_pose.position.y", "psm1_pose.position.z", # PSM1
-          "psm1_pose.orientation.x", "psm1_pose.orientation.y", "psm1_pose.orientation.z", "psm1_pose.orientation.w",
-          
-          "psm1_sp.position.x", "psm1_sp.position.y", "psm1_sp.position.z",
-          "psm1_sp.orientation.x", "psm1_sp.orientation.y", "psm1_sp.orientation.z", "psm1_sp.orientation.w",
-          
-          "psm1_jaw", "psm1_jaw_sp",
-
-          "psm1_rcm_pose.position.x", "psm1_rcm_pose.position.y", "psm1_rcm_pose.position.z", 
-          "psm1_rcm_pose.orientation.x", "psm1_rcm_pose.orientation.y", "psm1_rcm_pose.orientation.z", "psm1_rcm_pose.orientation.w",
-          
-          "psm2_pose.position.x", "psm2_pose.position.y", "psm2_pose.position.z", # PSM 2
-          "psm2_pose.orientation.x", "psm2_pose.orientation.y", "psm2_pose.orientation.z", "psm2_pose.orientation.w",
-          
-          "psm2_sp.position.x", "psm2_sp.position.y", "psm2_sp.position.z",
-          "psm2_sp.orientation.x", "psm2_sp.orientation.y", "psm2_sp.orientation.z", "psm2_sp.orientation.w",
-
-          "psm2_jaw", "psm2_jaw_sp",
-
-          "psm2_rcm_pose.position.x", "psm2_rcm_pose.position.y", "psm2_rcm_pose.position.z",
-          "psm2_rcm_pose.orientation.x", "psm2_rcm_pose.orientation.y", "psm2_rcm_pose.orientation.z", "psm2_rcm_pose.orientation.w",
-
-          "ecm_pose.position.x", "ecm_pose.position.y", "ecm_pose.position.z", # ECM
-          "ecm_pose.orientation.x", "ecm_pose.orientation.y", "ecm_pose.orientation.z", "ecm_pose.orientation.w",
-
-          "ecm_rcm_pose.position.x", "ecm_rcm_pose.position.y", "ecm_rcm_pose.position.z",
-          "ecm_rcm_pose.orientation.x", "ecm_rcm_pose.orientation.y", "ecm_rcm_pose.orientation.z", "ecm_rcm_pose.orientation.w",
-
-          "suj1_pose.position.x", "suj1_pose.position.y", "suj1_pose.position.z",
-          "suj1_pose.orientation.x", "suj1_pose.orientation.y", "suj1_pose.orientation.z", "suj1_pose.orientation.w",
-          "suj1_jp[0]", "suj1_jp[1]", "suj1_jp[2]", "suj1_jp[3]",
-
-          "suj2_pose.position.x", "suj2_pose.position.y", "suj2_pose.position.z",
-          "suj2_pose.orientation.x", "suj2_pose.orientation.y", "suj2_pose.orientation.z", "suj2_pose.orientation.w",
-          "suj2_jp[0]", "suj2_jp[1]", "suj2_jp[2]", "suj2_jp[3]",
-
-          "suj3_pose.position.x", "suj3_pose.position.y", "suj3_pose.position.z",
-          "suj3_pose.orientation.x", "suj3_pose.orientation.y", "suj3_pose.orientation.z", "suj3_pose.orientation.w",
-          "suj3_jp[0]", "suj3_jp[1]", "suj3_jp[2]", "suj3_jp[3]",
-
-          "suj_ecm_pose.position.x", "suj_ecm_pose.position.y", "suj_ecm_pose.position.z",
-          "suj_ecm_pose.orientation.x", "suj_ecm_pose.orientation.y", "suj_ecm_pose.orientation.z", "suj_ecm_pose.orientation.w",
-          "suj_ecm_jp[0]", "suj_ecm_jp[1]", "suj_ecm_jp[2]", "suj_ecm_jp[3]",
-
-          "psm1_js[0]", "psm1_js[1]", "psm1_js[2]", "psm1_js[3]", "psm1_js[4]", "psm1_js[5]",
-          "psm1_set_js[0]", "psm1_set_js[1]", "psm1_set_js[2]", "psm1_set_js[3]", "psm1_set_js[4]", "psm1_set_js[5]",
-
-          "psm2_js[0]", "psm2_js[1]", "psm2_js[2]", "psm2_js[3]", "psm2_js[4]", "psm2_js[5]",
-          "psm2_set_js[0]", "psm2_set_js[1]", "psm2_set_js[2]", "psm2_set_js[3]", "psm2_set_js[4]", "psm2_set_js[5]",
-
-          "psm3_js[0]", "psm3_js[1]", "psm3_js[2]", "psm3_js[3]", "psm3_js[4]", "psm3_js[5]",
-          "psm3_set_js[0]", "psm3_set_js[1]", "psm3_set_js[2]", "psm3_set_js[3]", "psm3_set_js[4]", "psm3_set_js[5]",
-
-          "ecm_js[0]", "ecm_js[1]", "ecm_js[2]", "ecm_js[3]",
-          "ecm_set_js[0]", "ecm_set_js[1]", "ecm_set_js[2]", "ecm_set_js[3]"
-        ]
-        
-        csv_data = pd.DataFrame(ee_points)
-        ee_save_path = os.path.join(ep_dir, "ee_csv.csv")
-        csv_data.to_csv(ee_save_path, index = False, header = header)
-
+        rt.vid_left.release()
+        rt.vid_right.release()
+        rt.vid_psm1_endo.release() 
+        rt.vid_psm2_endo.release()
+        close_csv_file()
         # make sure to set this back to False
         requiresSaveCsv = False
     
   # make sure we spin at 30hz
   rate.sleep()
 
-
+close_csv_file() 
 # When everything done, destroy all windows
 cv2.destroyAllWindows()

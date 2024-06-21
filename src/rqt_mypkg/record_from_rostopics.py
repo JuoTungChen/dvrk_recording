@@ -152,7 +152,7 @@ rospy.init_node('rostopic_recorder', anonymous=True)
 rt = ros_topics()
 time.sleep(0.5)
 
-rate = rospy.Rate(30) # ROS Rate at 5Hz
+rate = rospy.Rate(10) # ROS Rate at 5Hz
 requiresNewDir = True
 requiresSaveCsv = False
 num_frames = 0
@@ -229,6 +229,8 @@ while(True):
     save_name_left = os.path.join(left_img_dir, "frame{:06d}_left".format(num_frames) + ".jpg")
     save_name_right = os.path.join(right_img_dir, "frame{:06d}_right".format(num_frames) + ".jpg")
     # write the image
+    frame_left = cv2.resize(frame_left, (640, 480))
+    frame_right = cv2.resize(frame_right, (640, 480))
     cv2.imwrite(save_name_left, frame_left) # UNCOMMENT ME WHEN DEBUGGING IS OVER (early)
     cv2.imwrite(save_name_right, frame_right) # UNCOMMENT ME WHEN DEBUGGING IS OVER (early)
 

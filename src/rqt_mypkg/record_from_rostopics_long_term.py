@@ -31,7 +31,8 @@ def signal_handler(sig, frame):
 # Set up signal handler for graceful shutdown
 signal.signal(signal.SIGINT, signal_handler)
 
-image_sav_res = (960, 540) # (640, 480)
+wrist_image_sav_res = (640, 480)
+endo_image_save_res = (960, 540)
 print_execution_time_every_n_seconds = 5
 
 # Initialize isRecord - otherwise it throws an error in main loop if "dynamic_reconfigure_callback" not called yet
@@ -125,7 +126,15 @@ class ros_topics:
     self.sub14 = rospy.Subscriber("/PSM3/setpoint_js", JointState, self.c14)
     self.sub15 = rospy.Subscriber("/ECM/measured_js", JointState, self.c15)
     self.sub16 = rospy.Subscriber("/ECM/setpoint_js", JointState, self.c16)
-
+        
+    # Define the codec and create VideoWriter object
+    time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    fourcc = cv2.VideoWriter_fourcc(*'X264')
+    self.vid_left = cv2.VideoWriter('_recordings_long_term/endoscope_left_' + time_stamp + '.mp4', fourcc, 30, endo_image_save_res)
+    self.vid_right = cv2.VideoWriter('_recordings_long_term/endoscope_right_' + time_stamp + '.mp4', fourcc, 30, endo_image_save_res)
+    self.vid_psm1_endo = cv2.VideoWriter('_recordings_long_term/wrist_right_' + time_stamp + '.mp4', fourcc, 30, wrist_image_sav_res)
+    self.vid_psm2_endo = cv2.VideoWriter('_recordings_long_term/wrist_left_' + time_stamp + '.mp4', fourcc, 30, wrist_image_sav_res)
+    
   def c1(self, data):
     global suj1_pose
     suj1_pose = data.pose
@@ -275,7 +284,6 @@ def image_saver(queue):
     if item is None:
       break  # None is our signal to stop
     filename, image = item
-    # print(image)
     cv2.imwrite(filename, image)
     queue.task_done()
 
@@ -306,9 +314,9 @@ execution_times_list = []
 while(True):
   # Display the average execution time every n seconds
   if len(execution_times_list) == ros_fps*print_execution_time_every_n_seconds:
-      # print(f"Average execution time (publish+show wrist camera frames): {np.mean(execution_times_list)*1000:.2f} ms")
+    #   print(f"Average execution time (publish+show wrist camera frames): {np.mean(execution_times_list)*1000:.2f} ms")
       execution_times_list = []
-      # print(f"Current queue sizes: {image_queue.qsize()}")
+    #   print(f"Current queue sizes: {image_queue.qsize()}")
   
       # Publish wrist camera images + visualize them with the DaVinci Endoscope camera
   with measure_execution_time(execution_times_list):
@@ -396,31 +404,19 @@ while(True):
       ecm_set_js[0], ecm_set_js[1], ecm_set_js[2], ecm_set_js[3]
       ])
       
-      # save frame
-      # save_name_left = os.path.join(left_img_dir, f"frame{num_frames:06d}_{usb_image_left_timestamp}_left.jpg")
-      # save_name_right = os.path.join(right_img_dir, f"frame{num_frames:06d}_{usb_image_right_timestamp}_right.jpg")
-      # save_name_endo_p1 = os.path.join(endo_p1_dir, f"frame{num_frames:06d}_{endo_cam_psm1_timestamp}_psm1.jpg")
-      # save_name_endo_p2 = os.path.join(endo_p2_dir, f"frame{num_frames:06d}_{endo_cam_psm2_timestamp}_psm2.jpg")
-      save_name_left = os.path.join(left_img_dir, f"frame{num_frames:06d}_left.jpg")
-      save_name_right = os.path.join(right_img_dir, f"frame{num_frames:06d}_right.jpg")
-      save_name_endo_p1 = os.path.join(endo_p1_dir, f"frame{num_frames:06d}_psm1.jpg")
-      save_name_endo_p2 = os.path.join(endo_p2_dir, f"frame{num_frames:06d}_psm2.jpg")
+    #   save_name_left = os.path.join(left_img_dir, f"frame{num_frames:06d}_left.jpg")
+    #   save_name_right = os.path.join(right_img_dir, f"frame{num_frames:06d}_right.jpg")
+    #   save_name_endo_p1 = os.path.join(endo_p1_dir, f"frame{num_frames:06d}_psm1.jpg")
+    #   save_name_endo_p2 = os.path.join(endo_p2_dir, f"frame{num_frames:06d}_psm2.jpg")
 
-      if image_sav_res is None:
-        image_queue.put((save_name_left, cv2.cvtColor(usb_image_left, cv2.COLOR_BGR2RGB)))
-        image_queue.put((save_name_right, cv2.cvtColor(usb_image_right, cv2.COLOR_BGR2RGB)))
-        image_queue.put((save_name_endo_p1, endo_cam_psm1))
-        image_queue.put((save_name_endo_p2, endo_cam_psm2))
-      else:
-        image_queue.put((save_name_left, cv2.cvtColor(cv2.resize(usb_image_left, image_sav_res), cv2.COLOR_BGR2RGB)))
-        image_queue.put((save_name_right, cv2.cvtColor(cv2.resize(usb_image_right, image_sav_res), cv2.COLOR_BGR2RGB)))
-        image_queue.put((save_name_endo_p1, endo_cam_psm1))
-        image_queue.put((save_name_endo_p2, endo_cam_psm2))
-
+      rt.vid_left.write(cv2.cvtColor(cv2.resize(usb_image_left, endo_image_save_res), cv2.COLOR_BGR2RGB))
+      rt.vid_right.write(cv2.cvtColor(cv2.resize(usb_image_right, endo_image_save_res), cv2.COLOR_BGR2RGB))
+      rt.vid_psm1_endo.write(cv2.resize(endo_cam_psm1, wrist_image_sav_res))
+      rt.vid_psm2_endo.write(cv2.resize(endo_cam_psm2, wrist_image_sav_res))
       num_frames = num_frames + 1
 
       if num_frames % 100 == 0:
-        pass
+          pass
         # print(f"Queue size is {image_queue.qsize()}")
 
       if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -493,9 +489,14 @@ while(True):
         ]
         
         csv_data = pd.DataFrame(ee_points)
-        ee_save_path = os.path.join(ep_dir, "ee_csv.csv")
+        time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+        ee_save_path = os.path.join("_recordings_long_term", "ee_csv_" + str(time_stamp) + ".csv")
         csv_data.to_csv(ee_save_path, index = False, header = header)
-
+        rt.vid_left.release()
+        rt.vid_right.release()
+        rt.vid_psm1_endo.release() 
+        rt.vid_psm2_endo.release()
+        
         # make sure to set this back to False
         requiresSaveCsv = False
     
