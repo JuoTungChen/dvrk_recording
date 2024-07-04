@@ -8,7 +8,8 @@ import time
 
 # Initialize the CvBridge class
 bridge = CvBridge()
-size = (1280, 1440)
+scale = 3/4
+size = (int(1280*scale), int(1440*scale))
 
 class ros_topics:
 
@@ -56,7 +57,7 @@ def process_image(data, shape, center1, center2, rect_width, rect_height, draw_r
 def main():
     rt = ros_topics()
     rospy.init_node('visualize_img', anonymous=True)
-    rate = rospy.Rate(25)  # Adjust the rate as needed
+    rate = rospy.Rate(20)  # Adjust the rate as needed
     time.sleep(1)
 
     # Rectangle parameters

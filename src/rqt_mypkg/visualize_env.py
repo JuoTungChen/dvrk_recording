@@ -71,7 +71,7 @@ rospy.init_node('rostopic_recorder', anonymous=True)
 rt = ros_topics()
 time.sleep(0.5)
 
-ros_fps = 10 # 30hz
+ros_fps = 6 # 30hz
 rate = rospy.Rate(ros_fps)
 
 while True:
