@@ -12,7 +12,7 @@ import rospy
 from std_msgs.msg import String, Float64MultiArray, Bool, Float64
 from geometry_msgs.msg import Vector3, Transform, PoseStamped
 from cv_bridge import CvBridge, CvBridgeError
-from sensor_msgs.msg import Image, CompressedImage, JointState
+from sensor_msgs.msg import Image, CompressedImage, JointState, Joy
 from std_msgs.msg import Int32
 import pandas as pd
 import dynamic_reconfigure.client
@@ -59,6 +59,8 @@ ecm_rcm_pose = None
 
 kinematics_timestamp = usb_image_left_timestamp = usb_image_right_timestamp = endo_cam_psm1_timestamp = endo_cam_psm2_timestamp = None
 
+pedal = None
+
 # SUJ measured_cp and js
 suj1_pose = suj1_jp = None # SUJ/PSM1/measured_cp, measured_js
 suj2_pose = suj2_jp = None # SUJ/PSM2/measured_cp, measured_js
@@ -75,9 +77,6 @@ class ros_topics:
 
   def __init__(self):
     self.bridge = CvBridge()
-    self.dynamic_reconfigure_client = dynamic_reconfigure.client.Client("dynamic_tutorials", timeout=10,
-                                            config_callback = self.dynamic_reconfigure_callback)
-
     # subscribers
     self.usb_camera_sub_left = rospy.Subscriber("/jhu_daVinci/left/image_raw", Image, self.get_camera_image_left)
     self.usb_camera_sub_right = rospy.Subscriber("/jhu_daVinci/right/image_raw", Image, self.get_camera_image_right)
@@ -125,7 +124,12 @@ class ros_topics:
     self.sub14 = rospy.Subscriber("/PSM3/setpoint_js", JointState, self.c14)
     self.sub15 = rospy.Subscriber("/ECM/measured_js", JointState, self.c15)
     self.sub16 = rospy.Subscriber("/ECM/setpoint_js", JointState, self.c16)
-
+    
+    # pedal
+    self.sub17 = rospy.Subscriber("/footpedals/coag", Joy, self.get_pedal)
+  
+    self.pub_isRecording = rospy.Publisher('/recording/isRecording', Bool, queue_size=10)
+    
   def c1(self, data):
     global suj1_pose
     suj1_pose = data.pose
@@ -190,10 +194,6 @@ class ros_topics:
   def c16(self, data):
     global ecm_set_js
     ecm_set_js = data.position
-
-  def dynamic_reconfigure_callback(self, config):
-    global isRecord
-    isRecord = config["isRecord"] # TODO: Load here also other information from the GUI as the possible surgical phase that will be recorded?
 
   def get_camera_image_left(self,data):
     global usb_image_left
@@ -268,6 +268,10 @@ class ros_topics:
   def get_psm2_jaw_sp(self, data):
     global psm2_jaw_sp
     psm2_jaw_sp = data.position[0]
+    
+  def get_pedal(self, data):
+    global pedal
+    pedal = data.buttons[0]
 
 def image_saver(queue):
   while True:
@@ -312,7 +316,7 @@ while(True):
   
       # Publish wrist camera images + visualize them with the DaVinci Endoscope camera
   with measure_execution_time(execution_times_list):
-    if isRecord: 
+    if pedal == 1: 
       # create a new dir in the beginning
       
       if requiresNewDir:
@@ -323,7 +327,10 @@ while(True):
         endo_p1_dir = os.path.join(ep_dir, "endo_psm1")
         endo_p2_dir = os.path.join(ep_dir, "endo_psm2")
 
-
+        print("RECORDING NOW")
+        bool_msg = Bool()
+        bool_msg.data = True
+        rt.pub_isRecording.publish(bool_msg)
         # also reset indices and other stuff
         num_frames = 0
         ee_points = []
@@ -401,16 +408,12 @@ while(True):
       save_name_endo_p1 = os.path.join(endo_p1_dir, f"frame{num_frames:06d}_psm1.jpg")
       save_name_endo_p2 = os.path.join(endo_p2_dir, f"frame{num_frames:06d}_psm2.jpg")
 
-      if image_sav_res is None:
-        image_queue.put((save_name_left, cv2.cvtColor(usb_image_left, cv2.COLOR_BGR2RGB)))
-        image_queue.put((save_name_right, cv2.cvtColor(usb_image_right, cv2.COLOR_BGR2RGB)))
-        image_queue.put((save_name_endo_p1, endo_cam_psm1))
-        image_queue.put((save_name_endo_p2, endo_cam_psm2))
-      else:
-        image_queue.put((save_name_left, cv2.cvtColor(cv2.resize(usb_image_left, image_sav_res), cv2.COLOR_BGR2RGB)))
-        image_queue.put((save_name_right, cv2.cvtColor(cv2.resize(usb_image_right, image_sav_res), cv2.COLOR_BGR2RGB)))
-        image_queue.put((save_name_endo_p1, endo_cam_psm1))
-        image_queue.put((save_name_endo_p2, endo_cam_psm2))
+      # print(usb_image_left.shape)
+      # print(usb_image_right.shape)
+      image_queue.put((save_name_left, cv2.cvtColor(cv2.resize(usb_image_left, image_sav_res), cv2.COLOR_BGR2RGB)))
+      image_queue.put((save_name_right, cv2.cvtColor(cv2.resize(usb_image_right, image_sav_res), cv2.COLOR_BGR2RGB)))
+      image_queue.put((save_name_endo_p1, endo_cam_psm1))
+      image_queue.put((save_name_endo_p2, endo_cam_psm2))
 
       num_frames = num_frames + 1
 
@@ -420,10 +423,18 @@ while(True):
 
       if cv2.waitKey(1) & 0xFF == ord('q'):
           break
-
+        
+    elif pedal == 2:
+      print("incorrect state, do not short press pedal. Not a fatal error, continue as usual")
+    elif pedal is None:
+      continue
     else:
       # if not recording, the flag for creating a new directory should be set to true
       requiresNewDir = True
+      # publish that we are done recording
+      bool_msg = Bool()
+      bool_msg.data = False
+      rt.pub_isRecording.publish(bool_msg)
       cv2.destroyAllWindows()
       if requiresSaveCsv is True:
         # save ee points
@@ -493,7 +504,7 @@ while(True):
 
         # make sure to set this back to False
         requiresSaveCsv = False
-    
+        print("SAVED")
   # make sure we spin at 30hz
   rate.sleep()
 
