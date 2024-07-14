@@ -72,35 +72,6 @@ psm2_js = psm2_set_js = None  #PSM2/measured_js, setpoint_js
 psm3_js = psm3_set_js = None  #PSM3/measured_js, setpoint_js
 ecm_js = ecm_set_js = None # ECM/measured_js, setpoint_js
 
-# Global variables for MTML and MTMR
-mtml_gripper_js = mtml_measured_cp = mtml_measured_js = None
-mtmr_gripper_js = mtmr_measured_cp = mtmr_measured_js = None
-
-class RecordingManager:
-    def __init__(self):
-        self.vid_left = None
-        self.vid_right = None
-        self.vid_psm1_endo = None
-        self.vid_psm2_endo = None
-
-    def start_new_recording(self):
-        time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
-        fourcc = cv2.VideoWriter_fourcc(*'avc1')# *'X264' is not supported
-        self.vid_left = cv2.VideoWriter('_recordings_long_term/endoscope_left_' + time_stamp + '.mp4', fourcc, 30, endo_image_save_res)
-        self.vid_right = cv2.VideoWriter('_recordings_long_term/endoscope_right_' + time_stamp + '.mp4', fourcc, 30, endo_image_save_res)
-        self.vid_psm1_endo = cv2.VideoWriter('_recordings_long_term/wrist_right_' + time_stamp + '.mp4', fourcc, 30, wrist_image_sav_res)
-        self.vid_psm2_endo = cv2.VideoWriter('_recordings_long_term/wrist_left_' + time_stamp + '.mp4', fourcc, 30, wrist_image_sav_res)
-
-    def stop_current_recording(self):
-        if self.vid_left.isOpened():
-            self.vid_left.release()
-        if self.vid_right.isOpened():
-            self.vid_right.release()
-        if self.vid_psm1_endo.isOpened():
-            self.vid_psm1_endo.release()
-        if self.vid_psm2_endo.isOpened():
-            self.vid_psm2_endo.release()
-
 class ros_topics:
 
   def __init__(self):
@@ -155,20 +126,14 @@ class ros_topics:
     self.sub14 = rospy.Subscriber("/PSM3/setpoint_js", JointState, self.c14)
     self.sub15 = rospy.Subscriber("/ECM/measured_js", JointState, self.c15)
     self.sub16 = rospy.Subscriber("/ECM/setpoint_js", JointState, self.c16)
-    
-    # MTML
-    self.mtml_gripper_js_sub = rospy.Subscriber("/MTML/gripper/measured_js", JointState, self.get_mtml_gripper_js)
-    self.mtml_measured_cp_sub = rospy.Subscriber("/MTML/measured_cp", PoseStamped, self.get_mtml_measured_cp)
-    self.mtml_measured_js_sub = rospy.Subscriber("/MTML/measured_js", JointState, self.get_mtml_measured_js)
-
-    # MTMR
-    self.mtmr_gripper_js_sub = rospy.Subscriber("/MTMR/gripper/measured_js", JointState, self.get_mtmr_gripper_js)
-    self.mtmr_measured_cp_sub = rospy.Subscriber("/MTMR/measured_cp", PoseStamped, self.get_mtmr_measured_cp)
-    self.mtmr_measured_js_sub = rospy.Subscriber("/MTMR/measured_js", JointState, self.get_mtmr_measured_js)
-    
-    # IsRecording
-    self.pub_isRecording = rospy.Publisher('/recording/isRecording', Bool, queue_size=10)
-
+        
+    # Define the codec and create VideoWriter object
+    time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    fourcc = cv2.VideoWriter_fourcc(*'X264')
+    self.vid_left = cv2.VideoWriter('_recordings_long_term/endoscope_left_' + time_stamp + '.mp4', fourcc, 30, endo_image_save_res)
+    self.vid_right = cv2.VideoWriter('_recordings_long_term/endoscope_right_' + time_stamp + '.mp4', fourcc, 30, endo_image_save_res)
+    self.vid_psm1_endo = cv2.VideoWriter('_recordings_long_term/wrist_right_' + time_stamp + '.mp4', fourcc, 30, wrist_image_sav_res)
+    self.vid_psm2_endo = cv2.VideoWriter('_recordings_long_term/wrist_left_' + time_stamp + '.mp4', fourcc, 30, wrist_image_sav_res)
     
   def c1(self, data):
     global suj1_pose
@@ -234,30 +199,6 @@ class ros_topics:
   def c16(self, data):
     global ecm_set_js
     ecm_set_js = data.position
-    
-  def get_mtml_gripper_js(self, data):
-    global mtml_gripper_js
-    mtml_gripper_js = data.position
-
-  def get_mtml_measured_cp(self, data):
-      global mtml_measured_cp
-      mtml_measured_cp = data.pose
-
-  def get_mtml_measured_js(self, data):
-      global mtml_measured_js
-      mtml_measured_js = data.position
-
-  def get_mtmr_gripper_js(self, data):
-      global mtmr_gripper_js
-      mtmr_gripper_js = data.position
-
-  def get_mtmr_measured_cp(self, data):
-      global mtmr_measured_cp
-      mtmr_measured_cp = data.pose
-
-  def get_mtmr_measured_js(self, data):
-      global mtmr_measured_js
-      mtmr_measured_js = data.position
 
   def dynamic_reconfigure_callback(self, config):
     global isRecord
@@ -370,8 +311,6 @@ time.sleep(1)
 
 execution_times_list = []
 
-rm = RecordingManager()
-
 while(True):
   # Display the average execution time every n seconds
   if len(execution_times_list) == ros_fps*print_execution_time_every_n_seconds:
@@ -385,12 +324,6 @@ while(True):
       # create a new dir in the beginning
       
       if requiresNewDir:
-        rm.start_new_recording()
-        
-        bool_msg = Bool()
-        bool_msg.data = True
-        rt.pub_isRecording.publish(bool_msg)
-        
         time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
         ep_dir = os.path.join("_recordings", time_stamp)
         left_img_dir = os.path.join(ep_dir, "left_img_dir")
@@ -403,12 +336,12 @@ while(True):
         num_frames = 0
         ee_points = []
 
-        # if not os.path.exists(ep_dir):
-        #   os.makedirs(ep_dir)
-        #   os.makedirs(left_img_dir)
-        #   os.makedirs(right_img_dir)
-        #   os.makedirs(endo_p1_dir)
-        #   os.makedirs(endo_p2_dir)
+        if not os.path.exists(ep_dir):
+          os.makedirs(ep_dir)
+          os.makedirs(left_img_dir)
+          os.makedirs(right_img_dir)
+          os.makedirs(endo_p1_dir)
+          os.makedirs(endo_p2_dir)
 
         requiresNewDir = False
         # since we just made a new dir, we need to save csv later
@@ -468,29 +401,18 @@ while(True):
       psm3_set_js[0], psm3_set_js[1], psm3_set_js[2], psm3_set_js[3], psm3_set_js[4], psm3_set_js[5],
 
       ecm_js[0], ecm_js[1], ecm_js[2], ecm_js[3],
-      ecm_set_js[0], ecm_set_js[1], ecm_set_js[2], ecm_set_js[3],
-      
-      # MTML
-      mtml_gripper_js[0],
-      mtml_measured_cp.position.x, mtml_measured_cp.position.y, mtml_measured_cp.position.z,
-      mtml_measured_cp.orientation.x, mtml_measured_cp.orientation.y, mtml_measured_cp.orientation.z, mtml_measured_cp.orientation.w,
-      mtml_measured_js[0], mtml_measured_js[1], mtml_measured_js[2], mtml_measured_js[3], mtml_measured_js[4], mtml_measured_js[5], mtml_measured_js[6],
-      # MTMR
-      mtmr_gripper_js[0],
-      mtmr_measured_cp.position.x, mtmr_measured_cp.position.y, mtmr_measured_cp.position.z,
-      mtmr_measured_cp.orientation.x, mtmr_measured_cp.orientation.y, mtmr_measured_cp.orientation.z, mtmr_measured_cp.orientation.w,
-      mtmr_measured_js[0], mtmr_measured_js[1], mtmr_measured_js[2], mtmr_measured_js[3], mtmr_measured_js[4], mtmr_measured_js[5], mtmr_measured_js[6]
-    ])
+      ecm_set_js[0], ecm_set_js[1], ecm_set_js[2], ecm_set_js[3]
+      ])
       
     #   save_name_left = os.path.join(left_img_dir, f"frame{num_frames:06d}_left.jpg")
     #   save_name_right = os.path.join(right_img_dir, f"frame{num_frames:06d}_right.jpg")
     #   save_name_endo_p1 = os.path.join(endo_p1_dir, f"frame{num_frames:06d}_psm1.jpg")
     #   save_name_endo_p2 = os.path.join(endo_p2_dir, f"frame{num_frames:06d}_psm2.jpg")
 
-      rm.vid_left.write(cv2.cvtColor(cv2.resize(usb_image_left, endo_image_save_res), cv2.COLOR_BGR2RGB))
-      rm.vid_right.write(cv2.cvtColor(cv2.resize(usb_image_right, endo_image_save_res), cv2.COLOR_BGR2RGB))
-      rm.vid_psm1_endo.write(cv2.resize(endo_cam_psm1, wrist_image_sav_res))
-      rm.vid_psm2_endo.write(cv2.resize(endo_cam_psm2, wrist_image_sav_res))
+      rt.vid_left.write(cv2.cvtColor(cv2.resize(usb_image_left, endo_image_save_res), cv2.COLOR_BGR2RGB))
+      rt.vid_right.write(cv2.cvtColor(cv2.resize(usb_image_right, endo_image_save_res), cv2.COLOR_BGR2RGB))
+      rt.vid_psm1_endo.write(cv2.resize(endo_cam_psm1, wrist_image_sav_res))
+      rt.vid_psm2_endo.write(cv2.resize(endo_cam_psm2, wrist_image_sav_res))
       num_frames = num_frames + 1
 
       if num_frames % 100 == 0:
@@ -563,31 +485,17 @@ while(True):
           "psm3_set_js[0]", "psm3_set_js[1]", "psm3_set_js[2]", "psm3_set_js[3]", "psm3_set_js[4]", "psm3_set_js[5]",
 
           "ecm_js[0]", "ecm_js[1]", "ecm_js[2]", "ecm_js[3]",
-          "ecm_set_js[0]", "ecm_set_js[1]", "ecm_set_js[2]", "ecm_set_js[3]",
-          
-          # MTML
-          "mtml_gripper_js[0]",
-          "mtml_measured_cp.position.x", "mtml_measured_cp.position.y", "mtml_measured_cp.position.z",
-          "mtml_measured_cp.orientation.x", "mtml_measured_cp.orientation.y", "mtml_measured_cp.orientation.z", "mtml_measured_cp.orientation.w",
-          "mtml_measured_js[0]", "mtml_measured_js[1]", "mtml_measured_js[2]", "mtml_measured_js[3]", "mtml_measured_js[4]", "mtml_measured_js[5]", "mtml_measured_js[6]",
-          # MTMR
-          "mtmr_gripper_js[0]",
-          "mtmr_measured_cp.position.x", "mtmr_measured_cp.position.y", "mtmr_measured_cp.position.z",
-          "mtmr_measured_cp.orientation.x", "mtmr_measured_cp.orientation.y", "mtmr_measured_cp.orientation.z", "mtmr_measured_cp.orientation.w",
-          "mtmr_measured_js[0]", "mtmr_measured_js[1]", "mtmr_measured_js[2]", "mtmr_measured_js[3]", "mtmr_measured_js[4]", "mtmr_measured_js[5]", "mtmr_measured_js[5]"
+          "ecm_set_js[0]", "ecm_set_js[1]", "ecm_set_js[2]", "ecm_set_js[3]"
         ]
         
         csv_data = pd.DataFrame(ee_points)
         time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
         ee_save_path = os.path.join("_recordings_long_term", "ee_csv_" + str(time_stamp) + ".csv")
         csv_data.to_csv(ee_save_path, index = False, header = header)
-
-        # publish that we are done recording
-        bool_msg = Bool()
-        bool_msg.data = False
-        rt.pub_isRecording.publish(bool_msg)
-
-        rm.stop_current_recording()    
+        rt.vid_left.release()
+        rt.vid_right.release()
+        rt.vid_psm1_endo.release() 
+        rt.vid_psm2_endo.release()
         
         # make sure to set this back to False
         requiresSaveCsv = False

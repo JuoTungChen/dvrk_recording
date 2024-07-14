@@ -6,8 +6,8 @@ from sensor_msgs.msg import Image, CompressedImage, JointState
 from cv_bridge import CvBridge
 import rospy
 
-psm1_idx = 2
-psm2_idx = 0
+psm1_idx = 0
+psm2_idx = 2
 
 # desired_width = 1280
 # desired_height = 720

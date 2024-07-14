@@ -59,7 +59,7 @@ ecm_rcm_pose = None
 
 kinematics_timestamp = usb_image_left_timestamp = usb_image_right_timestamp = endo_cam_psm1_timestamp = endo_cam_psm2_timestamp = None
 
-pedal = None
+pedal = pedal_bicoag = None
 
 # SUJ measured_cp and js
 suj1_pose = suj1_jp = None # SUJ/PSM1/measured_cp, measured_js
@@ -127,6 +127,7 @@ class ros_topics:
     
     # pedal
     self.sub17 = rospy.Subscriber("/footpedals/coag", Joy, self.get_pedal)
+    self.sub18 = rospy.Subscriber("/footpedals/bicoag", Joy, self.get_pedal_bicoag)
   
     self.pub_isRecording = rospy.Publisher('/recording/isRecording', Bool, queue_size=10)
     
@@ -272,6 +273,11 @@ class ros_topics:
   def get_pedal(self, data):
     global pedal
     pedal = data.buttons[0]
+    
+  def get_pedal_bicoag(self, data):
+    global pedal_bicoag
+    pedal_bicoag = data.buttons[0]
+
 
 def image_saver(queue):
   while True:
@@ -316,18 +322,18 @@ while(True):
   
       # Publish wrist camera images + visualize them with the DaVinci Endoscope camera
   with measure_execution_time(execution_times_list):
-    if pedal == 1: 
+    if pedal == 1 or pedal_bicoag == 1: 
       # create a new dir in the beginning
       
       if requiresNewDir:
         time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
-        ep_dir = os.path.join("_recordings", time_stamp)
+        ep_dir = os.path.join("_recordings", time_stamp if pedal == 1 else time_stamp + "_recovery")
         left_img_dir = os.path.join(ep_dir, "left_img_dir")
         right_img_dir = os.path.join(ep_dir, "right_img_dir")
         endo_p1_dir = os.path.join(ep_dir, "endo_psm1")
         endo_p2_dir = os.path.join(ep_dir, "endo_psm2")
 
-        print("RECORDING NOW")
+        print("RECORDING NOW" if pedal == 1 else "RECOVERY RECORDING NOW") 
         bool_msg = Bool()
         bool_msg.data = True
         rt.pub_isRecording.publish(bool_msg)
