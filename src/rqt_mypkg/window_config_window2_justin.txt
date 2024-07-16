@@ -1,0 +1,1 @@
+{"screen_number": 0, "x_pos": 5191, "y_pos": 901, "width": 427, "height": 461}

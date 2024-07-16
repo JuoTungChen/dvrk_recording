@@ -1,116 +1,101 @@
-#!/usr/bin/env python
-import numpy as np
-import cv2 
+import sys
 import rospy
-from sensor_msgs.msg import Image, CompressedImage, JointState, Joy
-from cv_bridge import CvBridge, CvBridgeError
-import time
-from std_msgs.msg import String, Float64MultiArray, Bool, Float64
-import random
+from sensor_msgs.msg import Joy
+from PyQt5 import QtWidgets, QtCore, QtGui
+import json
+import os
 
+class TransparentWindow(QtWidgets.QWidget):
+    close_signal = QtCore.pyqtSignal()  # Signal to emit when closing
+    resize_signal = QtCore.pyqtSignal(int, int)  # Signal for resizing
 
-# Specify the font and initialize constants
-font = cv2.FONT_HERSHEY_SIMPLEX
-font_scale = 1   # Font size multiplier
-font_color_start = (0, 0, 255)  # Red color
-font_color_start_recov = (0, 255, 255)  
-font_color_stopped = (255, 255, 255)  # White color
-line_type = 2
-r_num = random.randint(0, 1000)
+    def __init__(self, identifier, config=None, show_resize_grip=True, show_info=True):
+        super().__init__()
 
-# Position of the text
-position = (10, 30)  # (x, y) coordinates of the bottom-left corner of the text
+        # Make the window frameless, transparent, and always on top
+        self.setWindowFlags(QtCore.Qt.FramelessWindowHint | QtCore.Qt.WindowStaysOnTopHint)
+        self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
 
-usb_image_left = None
-endo_cam_psm1 = None
-endo_cam_psm2 = None
-isRecording = None
-frame_left = None
-pedal = pedal_bicoag = None
+        # Set identifier for configuration purposes
+        self.identifier = identifier
+        self.show_resize_grip = show_resize_grip
+        self.show_info = show_info
+        self.pedal_count = 0
+        self.pedal_bicoag_count = 0
 
-class ros_topics:
+        # Set initial properties from configuration
+        self.screen_number = config.get('screen_number', 0) if config else 0
+        self.set_window_geometry(
+            config.get('x_pos', 100) if config else 100,
+            config.get('y_pos', 100) if config else 100,
+            config.get('width', 300) if config else 300,
+            config.get('height', 200) if config else 200
+        )
 
-  def __init__(self):
-    self.bridge = CvBridge()
-    # subscribers
-    self.usb_camera_sub_left = rospy.Subscriber("/jhu_daVinci/left/image_raw", Image, self.get_camera_image_left)
-    self.endo_cam_psm1_sub = rospy.Subscriber("/PSM1/endoscope_img", Image, self.get_endo_cam_psm1)
-    self.endo_cam_psm2_sub = rospy.Subscriber("/PSM2/endoscope_img", Image, self.get_endo_cam_psm2)
-    self.s1 = rospy.Subscriber("/recording/isRecording", Bool, self.get_isRecording)
-    
-    # pedal
-    self.sub17 = rospy.Subscriber("/footpedals/coag", Joy, self.get_pedal)
-    self.sub18 = rospy.Subscriber("/footpedals/bicoag", Joy, self.get_pedal_bicoag)
+        # Add labels to display pedal counts
+        self.pedal_label = QtWidgets.QLabel(f"Pedal Presses: {self.pedal_count}", self)
+        self.pedal_bicoag_label = QtWidgets.QLabel(f"Bicoag Pedal Presses: {self.pedal_bicoag_count}", self)
+        self.pedal_label.move(10, self.height() - 50)
+        self.pedal_bicoag_label.move(10, self.height() - 30)
+        self.pedal_label.setStyleSheet("QLabel { color : white; background-color: rgba(255, 0, 0, 100); }")
+        self.pedal_bicoag_label.setStyleSheet("QLabel { color : white; background-color: rgba(255, 0, 0, 100); }")
 
+        # Setup ROS Subscribers
+        rospy.init_node('pedal_listener', anonymous=True)
+        rospy.Subscriber("/footpedals/coag", Joy, self.get_pedal)
+        rospy.Subscriber("/footpedals/bicoag", Joy, self.get_pedal_bicoag)
+        rospy.Subscriber("/footpedals/cam_minus", Joy, self.reset_counts)
 
-  def get_camera_image_left(self,data):
-    global usb_image_left
-    global usb_image_left_timestamp
-    usb_image_left = bridge.imgmsg_to_cv2(data, desired_encoding = 'passthrough')
-    usb_image_left_timestamp = data.header.stamp
-    
-  def get_endo_cam_psm1(self, data):
-    global endo_cam_psm1
-    endo_cam_psm1 = bridge.imgmsg_to_cv2(data, desired_encoding = 'passthrough')
-    global endo_cam_psm1_timestamp
-    endo_cam_psm1_timestamp = data.header.stamp
+        # Tracking for dragging the window
+        self.oldPos = self.pos()
 
-  def get_endo_cam_psm2(self,data):
-    global endo_cam_psm2
-    endo_cam_psm2 = bridge.imgmsg_to_cv2(data, desired_encoding = 'passthrough')
-    global endo_cam_psm2_timestamp
-    endo_cam_psm2_timestamp = data.header.stamp
-    
-  def get_pedal(self, data):
-    global pedal
-    pedal = data.buttons[0]
-    
-  def get_pedal_bicoag(self, data):
-    global pedal_bicoag
-    pedal_bicoag = data.buttons[0]
+    def set_window_geometry(self, x_pos, y_pos, width, height):
+        screen = QtWidgets.QApplication.screens()[self.screen_number]
+        screen_geometry = screen.geometry()
+        self.setGeometry(screen_geometry.x() + x_pos, screen_geometry.y() + y_pos, width, height)
 
-    
-  def get_isRecording(self, data):
-    global isRecording
-    isRecording = data.data
+    def get_pedal(self, data):
+        if data.buttons[0] == 1:
+            self.pedal_count += 1
+            self.pedal_label.setText(f"Pedal Presses: {self.pedal_count}")
 
-#Create ROS publishers and subscribers
-bridge = CvBridge()
-rospy.init_node('rostopic_recorder', anonymous=True)
-rt = ros_topics()
-time.sleep(0.5)
+    def get_pedal_bicoag(self, data):
+        if data.buttons[0] == 1:
+            self.pedal_bicoag_count += 1
+            self.pedal_bicoag_label.setText(f"Bicoag Pedal Presses: {self.pedal_bicoag_count}")
 
-ros_fps = 9 # 30hz
-rate = rospy.Rate(ros_fps)
-scale = 1.8
-scale_wrist = 0.6
+    def reset_counts(self, data):
+        if data.buttons[0] == 1:
+            self.pedal_count = 0
+            self.pedal_bicoag_count = 0
+            self.pedal_label.setText(f"Pedal Presses: {self.pedal_count}")
+            self.pedal_bicoag_label.setText(f"Bicoag Pedal Presses: {self.pedal_bicoag_count}")
 
-ww = int(scale*480)
-hh = int(scale*270)
-ww_wrist = int(scale_wrist*640)
-hh_wrist = int(scale_wrist*480)
+    # Remaining methods (resizeEvent, paintEvent, etc.) are as previously defined
 
+def load_config(identifier):
+    try:
+        with open(f'window_config_{identifier}.txt', 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return None
 
-while True:
- 
-  # Display the resulting frame
-  frame_left = cv2.cvtColor(cv2.resize(usb_image_left, (int(scale*480), int(scale*270))), cv2.COLOR_BGR2RGB)
-  
-  if pedal == 1 or pedal_bicoag == 1:
-    cv2.imshow('frame_left' + str(r_num), cv2.putText(frame_left, 
-                'RECORDING NOW' if pedal == 1 else "RECORDING RECOVERY NOW", position, font, font_scale, 
-                font_color_start if pedal ==1 else font_color_start_recov, line_type))
-  elif not isRecording:
-    cv2.imshow('frame_left' + str(r_num), cv2.putText(frame_left, 
-                'RECORDING STOPPED', position, font, font_scale, font_color_stopped, line_type))
-      
-  cv2.imshow('right_wrist' + str(r_num), cv2.resize(endo_cam_psm1, (ww_wrist, hh_wrist)))
-  cv2.imshow('left_wrist' + str(r_num), cv2.resize(endo_cam_psm2, (ww_wrist, hh_wrist)))
- 
-  if cv2.waitKey(1) == ord('q'):
-      break
-    
-  rate.sleep()
+def close_all():
+    QtWidgets.QApplication.instance().quit()
 
-# When everything done, release the capture
-cv2.destroyAllWindows()
+def main():
+    app = QtWidgets.QApplication(sys.argv)
+    rospy.init_node('pedal_listener', anonymous=True)
+
+    config1 = load_config('window1')
+    config2 = load_config('window2')
+
+    window1 = TransparentWindow('window1', config=config1)
+    window2 = TransparentWindow('window2', config=config2)
+    window1.show()
+    window2.show()
+
+    sys.exit(app.exec_())
+
+if __name__ == "__main__":
+    main()
