@@ -1,1 +1,1 @@
-{"screen_number": 0, "x_pos": 5212, "y_pos": 578, "width": 427, "height": 461}
+{"screen_number": 0, "x_pos": 4525, "y_pos": 650, "width": 325, "height": 371}

@@ -417,8 +417,8 @@ while(True):
     # print(usb_image_right.shape)
     image_queue.put((save_name_left, cv2.cvtColor(cv2.resize(usb_image_left, image_sav_res), cv2.COLOR_BGR2RGB)))
     image_queue.put((save_name_right, cv2.cvtColor(cv2.resize(usb_image_right, image_sav_res), cv2.COLOR_BGR2RGB)))
-    image_queue.put((save_name_endo_p1, endo_cam_psm1))
-    image_queue.put((save_name_endo_p2, endo_cam_psm2))
+    # image_queue.put((save_name_endo_p1, endo_cam_psm1))
+    # image_queue.put((save_name_endo_p2, endo_cam_psm2))
 
     num_frames = num_frames + 1
 

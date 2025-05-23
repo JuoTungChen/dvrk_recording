@@ -13,7 +13,6 @@ import random
 font = cv2.FONT_HERSHEY_SIMPLEX
 font_scale = 1   # Font size multiplier
 font_color_start = (0, 0, 255)  # Red color
-font_color_start_recov = (0, 255, 255)  
 font_color_stopped = (255, 255, 255)  # White color
 line_type = 2
 r_num = random.randint(0, 1000)
@@ -26,22 +25,19 @@ endo_cam_psm1 = None
 endo_cam_psm2 = None
 isRecording = None
 frame_left = None
-pedal = pedal_bicoag = None
 
 class ros_topics:
 
   def __init__(self):
     self.bridge = CvBridge()
     # subscribers
-    self.usb_camera_sub_left = rospy.Subscriber("/jhu_daVinci/left/image_raw", Image, self.get_camera_image_left)
+    # self.usb_camera_sub_left = rospy.Subscriber("/jhu_daVinci/left/image_raw", Image, self.get_camera_image_left)
     self.endo_cam_psm1_sub = rospy.Subscriber("/PSM1/endoscope_img", Image, self.get_endo_cam_psm1)
     self.endo_cam_psm2_sub = rospy.Subscriber("/PSM2/endoscope_img", Image, self.get_endo_cam_psm2)
-    self.s1 = rospy.Subscriber("/recording/isRecording", Bool, self.get_isRecording)
+    # self.s1 = rospy.Subscriber("/recording/isRecording", Bool, self.get_isRecording)
     
     # pedal
     self.sub17 = rospy.Subscriber("/footpedals/coag", Joy, self.get_pedal)
-    self.sub18 = rospy.Subscriber("/footpedals/bicoag", Joy, self.get_pedal_bicoag)
-
 
   def get_camera_image_left(self,data):
     global usb_image_left
@@ -65,10 +61,6 @@ class ros_topics:
     global pedal
     pedal = data.buttons[0]
     
-  def get_pedal_bicoag(self, data):
-    global pedal_bicoag
-    pedal_bicoag = data.buttons[0]
-    
   def get_isRecording(self, data):
     global isRecording
     isRecording = data.data
@@ -82,30 +74,25 @@ time.sleep(0.5)
 ros_fps = 9 # 30hz
 rate = rospy.Rate(ros_fps)
 scale = 1.8
-scale_wrist = 0.4
-
-ww = int(scale*480)
-hh = int(scale*270)
-ww_wrist = int(scale_wrist*640)
-hh_wrist = int(scale_wrist*480)
-
+wrist_scale = 0.4
 
 while True:
  
-  # Display the resulting frame
-  frame_left = cv2.cvtColor(cv2.resize(usb_image_left, (int(scale*480), int(scale*270))), cv2.COLOR_BGR2RGB)
+  # # Display the resulting frame
+  # frame_left = cv2.cvtColor(cv2.resize(usb_image_left, (int(scale*480), int(scale*270))), cv2.COLOR_BGR2RGB)
   
-  if pedal == 1 or pedal_bicoag == 1:
-    cv2.imshow('frame_left' + str(r_num), cv2.putText(frame_left, 
-                'RECORDING NOW' if pedal == 1 else "RECORDING RECOVERY NOW", position, font, font_scale, 
-                font_color_start if pedal ==1 else font_color_start_recov, line_type))
-  elif not isRecording:
-    cv2.imshow('frame_left' + str(r_num), cv2.putText(frame_left, 
-                'RECORDING STOPPED', position, font, font_scale, font_color_stopped, line_type))
-      
-    cv2.imshow('right_wrist' + str(r_num), cv2.resize(endo_cam_psm1, (ww_wrist, hh_wrist)))
-    cv2.imshow('left_wrist' + str(r_num), cv2.resize(endo_cam_psm2, (ww_wrist, hh_wrist)))
-
+  # if isRecording:
+  #   cv2.imshow('frame_left' + str(r_num), cv2.putText(frame_left, 
+  #               'RECORDING NOW', position, font, font_scale, font_color_start, line_type))
+  # elif not isRecording:
+  #   cv2.imshow('frame_left' + str(r_num), cv2.putText(frame_left, 
+  #               'RECORDING STOPPED', position, font, font_scale, font_color_stopped, line_type))
+    
+  endo_cam_psm1_scaled = cv2.resize(endo_cam_psm1, (int(wrist_scale*640), int(wrist_scale*480)))
+  endo_cam_psm2_scaled = cv2.resize(endo_cam_psm2, (int(wrist_scale*640), int(wrist_scale*480)))
+  cv2.imshow('right_wrist' + str(r_num), endo_cam_psm1_scaled)
+  cv2.imshow('left_wrist' + str(r_num), endo_cam_psm2_scaled)
+ 
   if cv2.waitKey(1) == ord('q'):
       break
     

@@ -25,8 +25,8 @@ def signal_handler(sig, frame, cap1, cap2):
 # --------------- Set parameters ---------------
 
 # Adjust these indices to match the camera indices on your system (switch them if required)
-psm1_idx = 2 
-psm2_idx = 0 
+psm1_idx = 1
+psm2_idx = 2
 
 desired_width = 640
 desired_height = 480

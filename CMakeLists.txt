@@ -11,7 +11,13 @@ find_package(catkin REQUIRED COMPONENTS
   rospy
   rqt_gui
   rqt_gui_py
+  roscpp 
+  image_transport
+  cv_bridge
+  sensor_msgs
 )
+
+find_package(OpenCV REQUIRED)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -105,7 +111,7 @@ catkin_python_setup()
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES rqt_mypkg
-#  CATKIN_DEPENDS rospy rqt_gui rqt_gui_py
+ CATKIN_DEPENDS rospy rqt_gui rqt_gui_py roscpp image_transport cv_bridge sensor_msgs
 #  DEPENDS system_lib
 )
 
@@ -118,6 +124,7 @@ catkin_package(
 include_directories(
 # include
   ${catkin_INCLUDE_DIRS}
+  ${OpenCV_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library
@@ -134,7 +141,7 @@ include_directories(
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
 # add_executable(${PROJECT_NAME}_node src/rqt_mypkg_node.cpp)
-
+add_executable(${PROJECT_NAME}_node src/rqt_mypkg/visualize_daVinci_endoscope.cpp)
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
 ## target back to the shorter version for ease of user use
@@ -146,9 +153,10 @@ include_directories(
 # add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
-# target_link_libraries(${PROJECT_NAME}_node
-#   ${catkin_LIBRARIES}
-# )
+target_link_libraries(${PROJECT_NAME}_node
+   ${catkin_LIBRARIES}
+   ${OpenCV_LIBRARIES}
+ )
 
 #############
 ## Install ##
