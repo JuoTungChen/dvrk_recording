@@ -87,6 +87,9 @@ class ros_topics:
     self.endo_cam_psm2_sub = rospy.Subscriber("/PSM2/endoscope_img", 
                                             Image, self.get_endo_cam_psm2)
 
+    self.start_record_sub = rospy.Subscriber('/start_recording', Bool, self.start_record_callback)
+
+
     #psm1
     self.psm1_sub = rospy.Subscriber("/PSM1/measured_cp", PoseStamped, self.get_psm1_pose)
     self.psm1_sp_sub = rospy.Subscriber("/PSM1/setpoint_cp", PoseStamped, self.get_psm1_setpoint)
@@ -278,6 +281,14 @@ class ros_topics:
     global pedal_bicoag
     pedal_bicoag = data.buttons[0]
 
+  def start_record_callback(self, data):
+    global isRecord
+    isRecord = data.data
+
+  def get_record_status(self):
+    global isRecord
+    return isRecord
+
 
 def image_saver(queue):
   while True:
@@ -321,7 +332,7 @@ while(True):
       # print(f"Current queue sizes: {image_queue.qsize()}")
   
   # Publish wrist camera images + visualize them with the DaVinci Endoscope camera
-  if pedal == 1 or pedal_bicoag == 1: 
+  if pedal == 1 or pedal_bicoag == 1 or rt.get_record_status() is True: 
     # create a new dir in the beginning
     
     if requiresNewDir:
@@ -408,10 +419,16 @@ while(True):
     ecm_set_js[0], ecm_set_js[1], ecm_set_js[2], ecm_set_js[3]
     ])
     
-    save_name_left = os.path.join(left_img_dir, f"frame{num_frames:06d}_left.jpg")
-    save_name_right = os.path.join(right_img_dir, f"frame{num_frames:06d}_right.jpg")
-    save_name_endo_p1 = os.path.join(endo_p1_dir, f"frame{num_frames:06d}_psm1.jpg")
-    save_name_endo_p2 = os.path.join(endo_p2_dir, f"frame{num_frames:06d}_psm2.jpg")
+    # save_name_left = os.path.join(left_img_dir, f"frame{num_frames:06d}_left.jpg")
+    # save_name_right = os.path.join(right_img_dir, f"frame{num_frames:06d}_right.jpg")
+    # save_name_endo_p1 = os.path.join(endo_p1_dir, f"frame{num_frames:06d}_psm1.jpg")
+    # save_name_endo_p2 = os.path.join(endo_p2_dir, f"frame{num_frames:06d}_psm2.jpg")
+    
+    save_name_left = os.path.join(left_img_dir, f"frame{usb_image_left_timestamp}_left.jpg")
+    save_name_right = os.path.join(right_img_dir, f"frame{usb_image_right_timestamp}_right.jpg")
+    save_name_endo_p1 = os.path.join(endo_p1_dir, f"frame{endo_cam_psm1_timestamp}_psm1.jpg")
+    save_name_endo_p2 = os.path.join(endo_p2_dir, f"frame{endo_cam_psm2_timestamp}_psm2.jpg")
+
 
     # print(usb_image_left.shape)
     # print(usb_image_right.shape)
