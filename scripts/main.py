@@ -29,6 +29,7 @@ How to use:
 
 import rclpy
 from rclpy.node import Node
+from sensor_msgs.msg import Image, Joy, JointState
 from std_msgs.msg import Int8
 import sys
 import os
@@ -39,36 +40,47 @@ from subscribers import RecorderSubscribers
 class DataRecorderNode(Node):
     def __init__(self):
         super().__init__("data_recorder_node")
-        self.recorder = Recorder(self)
-        self.subs = RecorderSubscribers(self, self.recorder)
+        
+        # Declare the ROS 2 parameter (default to True)
+        self.declare_parameter('use_wrist_cameras', True)
+        use_wrist_cameras = self.get_parameter('use_wrist_cameras').get_parameter_value().bool_value
+        
+        self.get_logger().info(f"Wrist camera recording is: {use_wrist_cameras}")
+
+        # Pass the parameter down to Recorder and Subscribers
+        self.recorder = Recorder(self, use_wrist_cameras=use_wrist_cameras)
+        self.subs = RecorderSubscribers(self, self.recorder, use_wrist_cameras=use_wrist_cameras)
+
         self.recorder.set_subscriber(self.subs)
 
-        # Pedal state handling
-        self.pedal_state = None
-        self.pedal_sub = self.create_subscription(
-            Int8,
-            '/dvrk/footpedals/clutch',  # Assuming this is the topic for the pedal
-            self.pedal_callback,
-            10
-        )
+        # New variables to track toggle state
+        self.is_recording = False
+        self.last_pedal_state = 0 
         
         # Timer to check for state changes
         self.timer = self.create_timer(1.0/30.0, self.timer_callback) # 30 Hz
 
-    def pedal_callback(self, msg):
-        self.pedal_state = msg.data
-
     def timer_callback(self):
-        if self.pedal_state == 1:
-            if self.recorder.requires_new_dir:
+        current_pedal = self.subs.pedal
+
+        # Detect Rising Edge: Pedal was 0 (up) and is now 1 (down)
+        if current_pedal == 1 and self.last_pedal_state == 0:
+            if not self.is_recording:
+                self.get_logger().info("Toggle: Starting Recording...")
                 self.recorder.start_new_episode()
-        elif self.pedal_state == 0:
-            if self.recorder.requires_save_csv:
+                self.is_recording = True
+            else:
+                self.get_logger().info("Toggle: Stopping Recording...")
                 self.recorder.stop_episode()
-        elif self.pedal_state == 2:
-            self.get_logger().warn("Incorrect state, do not short press pedal.")
+                self.is_recording = False
+
+        # Update last state for the next loop iteration
+        self.last_pedal_state = current_pedal
 
     def shutdown(self):
+        # Ensure we stop recording if we shut down while active
+        if self.is_recording:
+            self.recorder.stop_episode()
         self.recorder.image_queue.put(None)
         self.recorder.worker.join()
         self.get_logger().info("Image saver worker stopped.")

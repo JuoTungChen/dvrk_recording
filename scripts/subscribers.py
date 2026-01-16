@@ -22,61 +22,86 @@ from rclpy.node import Node
 
 from recorder import Recorder
 import os
-
 class RecorderSubscribers:
-    #########--- Initialization ---###########
-    def __init__(self, node: Node, recorder: Recorder):
+    def __init__(self, node: Node, recorder: Recorder, use_wrist_cameras=True): # Add flag
         self.node = node
         self.recorder = recorder
+        self.use_wrist_cameras = use_wrist_cameras # Store flag
         self.bridge = CvBridge()
+        self.pedal = 0
+        self.pedal_bicoag = 0
 
-        # Image Subscribers
-        self.left_sub = message_filters.Subscriber(self.node, Image, "/jhu_daVinci/left/image_raw")
-        self.right_sub = message_filters.Subscriber(self.node, Image, "/jhu_daVinci/right/image_raw")
-        self.endo1_sub = message_filters.Subscriber(self.node, Image, "/PSM1/endoscope_img")
-        self.endo2_sub = message_filters.Subscriber(self.node, Image, "/PSM2/endoscope_img")
-
-        self.ts = message_filters.ApproximateTimeSynchronizer(
-            [self.left_sub, self.right_sub, self.endo1_sub, self.endo2_sub],
-            queue_size=10,
-            slop=0.02
-        )
-        self.ts.registerCallback(self.image_callback)
+        # Individual Image Subscribers (No synchronization)
+        self.node.create_subscription(Image, "/cnh_dvrk/left/image_raw", self.left_cb, 10)
+        self.node.create_subscription(Image, "/cnh_dvrk/right/image_raw", self.right_cb, 10)
+        # Only subscribe if enabled
+        if self.use_wrist_cameras:
+            self.node.create_subscription(Image, "/left_wrist/camera/image_raw", self.endo1_cb, 10)
+            self.node.create_subscription(Image, "/right_wrist/camera/image_raw", self.endo2_cb, 10)
 
         self.create_kinematics_subscribers()
-        
-        self.pub_isRecording = self.node.create_publisher(Bool, '/recording/isRecording', 10)
-        
-        self.count = 0
-        self.ee_points = []
         self.image_sav_res = (960, 540) 
+
+    def left_cb(self, msg): self.process_image(msg, "left")
+    def right_cb(self, msg): self.process_image(msg, "right")
+    def endo1_cb(self, msg): self.process_image(msg, "psm1")
+    def endo2_cb(self, msg): self.process_image(msg, "psm2")
+
+    def process_image(self, msg, cam_name):
+        # Only process if we are currently recording
+        if self.recorder.requires_new_dir:
+            return
+
+        # 1. Get Timestamp (Universal ID)
+        ts_ns = msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec
+        
+        # 2. Determine Directory based on cam_name
+        dirs = {
+            "left": self.recorder.left_img_dir,
+            "right": self.recorder.right_img_dir,
+            "psm1": self.recorder.endo_p1_dir,
+            "psm2": self.recorder.endo_p2_dir
+        }
+        filename = os.path.join(dirs[cam_name], f"{ts_ns}_{cam_name}.jpg")
+
+        # 3. Convert and Resize
+        try:
+            cv_img = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+            if cam_name in ["left", "right"]:
+                cv_img = cv2.resize(cv_img, self.image_sav_res)
+            
+            # 4. Push to Queue
+            self.recorder.image_queue.put((cv_img, filename))
+            
+            # 5. Capture Kinematics precisely when a frame is received
+            # This links this specific frame's timestamp to the current robot state
+            row = [ts_ns, cam_name] + self.get_latest_poses()
+            self.recorder.ee_points.append(row)
+        except Exception as e:
+            self.node.get_logger().error(f"Failed to process {cam_name} image: {e}")
 
     def create_kinematics_subscribers(self):
         # PSM1
         self.node.create_subscription(PoseStamped, "/PSM1/measured_cp", self.get_psm1_pose, 10)
         self.node.create_subscription(PoseStamped, "/PSM1/setpoint_cp", self.get_psm1_setpoint, 10)
-        self.node.create_subscription(PoseStamped, "PSM1/local/measured_cp", self.get_psm1_rcm_pose, 10)
-        self.node.create_subscription(JointState, "PSM1/jaw/measured_js", self.get_psm1_jaw, 10)
-        self.node.create_subscription(JointState, "PSM1/jaw/setpoint_js", self.get_psm1_jaw_sp, 10)
+        self.node.create_subscription(PoseStamped, "/PSM1/local/measured_cp", self.get_psm1_rcm_pose, 10)
+        self.node.create_subscription(JointState, "/PSM1/jaw/measured_js", self.get_psm1_jaw, 10)
+        self.node.create_subscription(JointState, "/PSM1/jaw/setpoint_js", self.get_psm1_jaw_sp, 10)
         self.node.create_subscription(JointState, "/PSM1/measured_js", self.c9, 10)
         self.node.create_subscription(JointState, "/PSM1/setpoint_js", self.c10, 10)
 
         # PSM2
         self.node.create_subscription(PoseStamped, "/PSM2/measured_cp", self.get_psm2_pose, 10)    
         self.node.create_subscription(PoseStamped, "/PSM2/setpoint_cp", self.get_psm2_setpoint, 10)
-        self.node.create_subscription(PoseStamped, "PSM2/local/measured_cp", self.get_psm2_rcm_pose, 10)
-        self.node.create_subscription(JointState, "PSM2/jaw/measured_js", self.get_psm2_jaw, 10)
-        self.node.create_subscription(JointState, "PSM2/jaw/setpoint_js", self.get_psm2_jaw_sp, 10)
+        self.node.create_subscription(PoseStamped, "/PSM2/local/measured_cp", self.get_psm2_rcm_pose, 10)
+        self.node.create_subscription(JointState, "/PSM2/jaw/measured_js", self.get_psm2_jaw, 10)
+        self.node.create_subscription(JointState, "/PSM2/jaw/setpoint_js", self.get_psm2_jaw_sp, 10)
         self.node.create_subscription(JointState, "/PSM2/measured_js", self.c11, 10)
         self.node.create_subscription(JointState, "/PSM2/setpoint_js", self.c12, 10)
 
-        # PSM3
-        self.node.create_subscription(JointState, "/PSM3/measured_js", self.c13, 10)
-        self.node.create_subscription(JointState, "/PSM3/setpoint_js", self.c14, 10)
-
         # ECM
         self.node.create_subscription(PoseStamped, "/ECM/measured_cp", self.get_ecm_pose, 10)
-        self.node.create_subscription(PoseStamped, "ECM/local/measured_cp", self.get_ecm_rcm_pose, 10)
+        self.node.create_subscription(PoseStamped, "/ECM/local/measured_cp", self.get_ecm_rcm_pose, 10)
         self.node.create_subscription(JointState, "/ECM/measured_js", self.c15, 10)
         self.node.create_subscription(JointState, "/ECM/setpoint_js", self.c16, 10)
         
@@ -91,8 +116,8 @@ class RecorderSubscribers:
         self.node.create_subscription(JointState, "/SUJ/ECM/measured_js", self.c8, 10)
         
         # Pedal
-        self.node.create_subscription(Joy, "/footpedals/coag", self.get_pedal, 10)
-        self.node.create_subscription(Joy, "/footpedals/bicoag", self.get_pedal_bicoag, 10)
+        self.node.create_subscription(Joy, "/IO/io/coag", self.get_pedal, 10)
+        self.node.create_subscription(Joy, "/IO/io/bicoag", self.get_pedal_bicoag, 10)
 
     #########--- Subscriber Callbacks ---###########
     def get_ecm_pose(self, data):
@@ -175,12 +200,6 @@ class RecorderSubscribers:
 
     def c12(self, data):
         self.psm2_set_js = data.position
-
-    def c13(self, data):
-        self.psm3_js = data.position
-
-    def c14(self, data):
-        self.psm3_set_js = data.position
 
     def c15(self, data):
         self.ecm_js = data.position
@@ -299,9 +318,6 @@ class RecorderSubscribers:
             
             self.psm2_js[0], self.psm2_js[1], self.psm2_js[2], self.psm2_js[3], self.psm2_js[4], self.psm2_js[5],
             self.psm2_set_js[0], self.psm2_set_js[1], self.psm2_set_js[2], self.psm2_set_js[3], self.psm2_set_js[4], self.psm2_set_js[5],
-            
-            self.psm3_js[0], self.psm3_js[1], self.psm3_js[2], self.psm3_js[3], self.psm3_js[4], self.psm3_js[5],
-            self.psm3_set_js[0], self.psm3_set_js[1], self.psm3_set_js[2], self.psm3_set_js[3], self.psm3_set_js[4], self.psm3_set_js[5],
             
             self.ecm_js[0], self.ecm_js[1], self.ecm_js[2], self.ecm_js[3],
             self.ecm_set_js[0], self.ecm_set_js[1], self.ecm_set_js[2], self.ecm_set_js[3]

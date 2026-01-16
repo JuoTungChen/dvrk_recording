@@ -31,7 +31,7 @@ import cv2
 import time
 
 class Recorder:
-    def __init__(self, node: Node, base_dir="~/_recordings"):
+    def __init__(self, node: Node, base_dir="~/_recordings", use_wrist_cameras=True): # Add flag
         """
         Initialize the Recorder object.
 
@@ -43,6 +43,7 @@ class Recorder:
             None. Sets up directories, state variables, image queue, and starts the image saver worker thread.
         """
         self.node = node
+        self.use_wrist_cameras = use_wrist_cameras
         self.base_dir = os.path.expanduser(base_dir)
         self.subscriber = None
         self.left_img_dir = None
@@ -106,8 +107,12 @@ class Recorder:
 
         os.makedirs(self.left_img_dir, exist_ok=True)
         os.makedirs(self.right_img_dir, exist_ok=True)
-        os.makedirs(self.endo_p1_dir, exist_ok=True)
-        os.makedirs(self.endo_p2_dir, exist_ok=True)
+        
+        # Only create directories if enabled
+        if self.use_wrist_cameras:
+            # CHANGE self.episode_dir TO ep_dir HERE:
+            os.makedirs(os.path.join(ep_dir, "endo_psm1"), exist_ok=True)
+            os.makedirs(os.path.join(ep_dir, "endo_psm2"), exist_ok=True)
 
         self.ep_dir = ep_dir
 
@@ -132,9 +137,9 @@ class Recorder:
         self.clean_and_save()
         self.requires_new_dir = True
         self.requires_save_csv = False
-
+    """
     def clean_and_save(self):
-        """
+        
         Ensure 1-to-1 correspondence between images and kinematic rows, then save kinematic data to CSV.
 
         Input:
@@ -142,7 +147,7 @@ class Recorder:
 
         Output:
             None. Removes excess images or trims kinematic rows as needed, then saves CSV to disk.
-        """
+        
         num_rows = len(self.ee_points)
         num_images = len(os.listdir(self.left_img_dir))
         excess = num_images - num_rows
@@ -157,11 +162,19 @@ class Recorder:
         elif excess < 0:
             self.node.get_logger().warn(f"More rows ({num_rows}) than images ({num_images}) — trimming rows.")
             # self.ee_points = self.ee_points[:num_images]
+    """
 
-        # Save CSV
-        header =  [
-        "timestamp",
+    def clean_and_save(self):
+        self.node.get_logger().info(f"Number of kinematic rows: {len(self.ee_points)}")
         
+        # 1. Check if we actually have data to save
+        if not self.ee_points:
+            self.node.get_logger().warn("No data collected during this episode. Skipping CSV save.")
+            return
+        
+        # Updated Header (Added 'camera_source')
+        header = ["timestamp", "camera_source"] + [
+            
         "psm1_pose.position.x", "psm1_pose.position.y", "psm1_pose.position.z", # PSM1
         "psm1_pose.orientation.x", "psm1_pose.orientation.y", "psm1_pose.orientation.z", "psm1_pose.orientation.w",
         
@@ -212,14 +225,23 @@ class Recorder:
         "psm2_js[0]", "psm2_js[1]", "psm2_js[2]", "psm2_js[3]", "psm2_js[4]", "psm2_js[5]",
         "psm2_set_js[0]", "psm2_set_js[1]", "psm2_set_js[2]", "psm2_set_js[3]", "psm2_set_js[4]", "psm2_set_js[5]",
 
-        "psm3_js[0]", "psm3_js[1]", "psm3_js[2]", "psm3_js[3]", "psm3_js[4]", "psm3_js[5]",
-        "psm3_set_js[0]", "psm3_set_js[1]", "psm3_set_js[2]", "psm3_set_js[3]", "psm3_set_js[4]", "psm3_set_js[5]",
-
         "ecm_js[0]", "ecm_js[1]", "ecm_js[2]", "ecm_js[3]",
         "ecm_set_js[0]", "ecm_set_js[1]", "ecm_set_js[2]", "ecm_set_js[3]"
         ]
-            
+        
+        # 3. Create DataFrame
         df = pd.DataFrame(self.ee_points)
-        df.to_csv(os.path.join(self.ep_dir, "ee_csv.csv"), index=False, header=header)
-        self.node.get_logger().info(f"Saved CSV to {self.ep_dir}")
+
+        # 4. Safety Check: If rows and header don't match, don't crash
+        if df.shape[1] != len(header):
+            self.node.get_logger().error(
+                f"Column mismatch! DF has {df.shape[1]} cols, but header has {len(header)}."
+            )
+            # Save without header so you at least keep the raw data for debugging
+            df.to_csv(os.path.join(self.ep_dir, "ee_csv_DEBUG.csv"), index=False)
+        else:
+            df.to_csv(os.path.join(self.ep_dir, "ee_csv.csv"), index=False, header=header)
+            self.node.get_logger().info(f"Saved CSV to {self.ep_dir}")
+
+        # Clear for next run
         self.ee_points = []
