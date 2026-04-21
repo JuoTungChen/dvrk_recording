@@ -23,7 +23,7 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(camera_launch_path),
         launch_arguments={
             'camera_name': 'left_wrist',
-            'device': '/dev/video2'
+            'device': '/dev/video0'
         }.items()
     )
 
@@ -32,7 +32,7 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(camera_launch_path),
         launch_arguments={
             'camera_name': 'right_wrist',
-            'device': '/dev/video0'
+            'device': '/dev/video2'
         }.items()
     )
 

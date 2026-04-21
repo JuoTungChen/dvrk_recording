@@ -48,6 +48,10 @@ class DataRecorderNode(Node):
         self.get_logger().info(f"Wrist camera recording is: {use_wrist_cameras}")
 
         # Pass the parameter down to Recorder and Subscribers
+        #if os.path.exists("/media/dvrkuser/Seagate Por"):
+        #    self.recorder = Recorder(self, use_wrist_cameras=use_wrist_cameras, base_dir="/media/dvrkuser/Seagate Por")
+        #else:
+            
         self.recorder = Recorder(self, use_wrist_cameras=use_wrist_cameras)
         self.subs = RecorderSubscribers(self, self.recorder, use_wrist_cameras=use_wrist_cameras)
 
